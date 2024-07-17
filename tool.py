@@ -1,10 +1,10 @@
 import torch
 from transformers import BertTokenizer, BertModel
 from sklearn.metrics.pairwise import cosine_similarity
-import json
 import numpy as np
 import umap
 import plotly.graph_objects as go
+import click
 
 
 def get_bert_embedding(text, model, tokenizer):
@@ -16,11 +16,15 @@ def get_bert_embedding(text, model, tokenizer):
     return outputs.last_hidden_state.mean(dim=1).squeeze().numpy()
 
 
-def process_nouns(file_path, n_nouns: int, n_neighbors: int):
-    # Load pre-trained model and tokenizer
+def load_model_and_tokenizer():
     print("Loading pre-trained BERT model and tokenizer...")
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
     model = BertModel.from_pretrained("bert-base-uncased")
+    return model, tokenizer
+
+
+def process_nouns(file_path, n_nouns: int):
+    model, tokenizer = load_model_and_tokenizer()
 
     # Read nouns from file
     print("Reading nouns from file...")
@@ -33,38 +37,10 @@ def process_nouns(file_path, n_nouns: int, n_neighbors: int):
     print("Calculating BERT embeddings")
     embeddings = [get_bert_embedding(noun, model, tokenizer) for noun in nouns]
 
-    # Calculate pairwise similarities
-    print("Calculating pairwise similarities")
-    similarities = cosine_similarity(embeddings)
-
-    # Find N closest neighbors for each noun
-    print("Generating graph")
-    graph = {"nodes": [], "links": []}
-    for i, noun in enumerate(nouns):
-        graph["nodes"].append({"id": noun})
-        neighbors = similarities[i].argsort()[-n_neighbors - 1 : -1][
-            ::-1
-        ]  # exclude self
-        for neighbor in neighbors:
-            graph["links"].append(
-                {
-                    "source": noun,
-                    "target": nouns[neighbor],
-                    "similarity": float(
-                        similarities[i][neighbor]
-                    ),  # Convert to float for JSON serialization
-                }
-            )
-
-    # Save graph to JSON file
-    with open("graph_data.json", "w") as f:
-        json.dump(graph, f, indent=4)
-
-    # Apply UMAP and visualize
-    visualize_umap(embeddings, nouns)
+    return embeddings, nouns
 
 
-def visualize_umap(embeddings, labels):
+def visualize_umap(embeddings, labels, output_path):
     print("Applying UMAP and creating visualization...")
 
     # Convert embeddings to numpy array
@@ -80,12 +56,7 @@ def visualize_umap(embeddings, labels):
             x=embedding_2d[:, 0],
             y=embedding_2d[:, 1],
             mode="markers+text",
-            marker=dict(
-                size=10,
-                # color=np.arange(len(labels)),  # color by index
-                # colorscale="Viridis",
-                # showscale=True,
-            ),
+            marker=dict(size=10),
             text=labels,
             textposition="top center",
         )
@@ -100,11 +71,38 @@ def visualize_umap(embeddings, labels):
     )
 
     # Save the plot as an HTML file
-    fig.write_html("umap_visualization.html")
-    print("Visualization saved as 'umap_visualization.html'")
+    fig.write_html(output_path)
+    print(f"Visualization saved as '{output_path}'")
+
+
+@click.group()
+def cli():
+    pass
+
+
+@cli.command()
+@click.argument("input_file", type=click.Path(exists=True))
+@click.argument("output_file", type=click.Path())
+@click.option("--n_nouns", default=100, help="Number of nouns to process")
+def umap_visualization(input_file, output_file, n_nouns):
+    """Generate UMAP visualization for nouns."""
+    embeddings, nouns = process_nouns(input_file, n_nouns)
+    visualize_umap(embeddings, nouns, output_file)
+
+
+@cli.command()
+@click.option("--phrase1", required=True, help="First phrase for comparison")
+@click.option("--phrase2", required=True, help="Second phrase for comparison")
+def cosine_sim(phrase1, phrase2):
+    """Compute cosine similarity between two phrases."""
+    model, tokenizer = load_model_and_tokenizer()
+
+    embedding1 = get_bert_embedding(phrase1, model, tokenizer)
+    embedding2 = get_bert_embedding(phrase2, model, tokenizer)
+
+    similarity = cosine_similarity([embedding1], [embedding2])[0][0]
+    click.echo(f"Cosine similarity between '{phrase1}' and '{phrase2}': {similarity}")
 
 
 if __name__ == "__main__":
-    process_nouns(
-        "./nouns.txt", n_nouns=100, n_neighbors=3
-    )  # You can adjust n_neighbors as needed
+    cli()

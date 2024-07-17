@@ -1,6 +1,6 @@
-# Noun Processing with BERT and UMAP Visualization
+# Noun Processing with BERT, UMAP Visualization, and Cosine Similarity CLI
 
-This project processes nouns using BERT embeddings, calculates similarities, and visualizes the results using UMAP and Plotly.
+This project processes nouns using BERT embeddings, calculates similarities, visualizes the results using UMAP and Plotly, and provides a CLI for UMAP visualization and cosine similarity computation.
 
 ## Setup
 
@@ -26,15 +26,43 @@ This project processes nouns using BERT embeddings, calculates similarities, and
 
 ## Usage
 
-1. Ensure you have a file named `nouns.txt` in the same directory as the script, with one noun per line.
+The script now provides two CLI commands:
 
-2. Run the script:
-   ```
-   python process_nouns.py
-   ```
+### 1. UMAP Visualization
 
-3. The script will generate two files:
-   - `graph_data.json`: Contains the graph data of noun similarities.
-   - `umap_visualization.html`: An interactive visualization of the UMAP projection.
+Generate a UMAP visualization for nouns:
 
-You can open the `umap_visualization.html` file in a web browser to explore the visualization.
+```
+python tool.py umap-visualization nouns.txt umap_visualization.html
+```
+
+Options:
+- `--n_nouns INTEGER`: Number of nouns to process (default: 100)
+
+Example:
+```
+python tool.py umap-visualization nouns.txt visualization.html --n_nouns 200 --n_neighbors 5
+```
+
+### 2. Cosine Similarity
+
+Compute the cosine similarity between two phrases:
+
+```
+python tool.py cosine-sim --phrase1 TEXT --phrase2 TEXT
+```
+
+Options:
+- `--phrase1 TEXT`: First phrase for comparison (required)
+- `--phrase2 TEXT`: Second phrase for comparison (required)
+
+Example:
+```
+python tool.py cosine-sim --phrase1 "hello world" --phrase2 "greetings earth"
+```
+
+This command will output the cosine similarity between the two phrases.
+
+## Note
+
+The UMAP visualization command requires a file named `nouns.txt` (or another specified input file) in the same directory as the script, with one noun per line.
