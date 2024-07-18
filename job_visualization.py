@@ -7,6 +7,8 @@ import umap
 import plotly.graph_objects as go
 import click
 import os
+import textwrap
+from loguru import logger
 
 
 def remove_non_ascii(text):
@@ -25,14 +27,13 @@ def normalize_salary(row):
 
 
 def load_and_preprocess_data(file_path, columns_to_normalize):
+    logger.info(f"Loading and preprocessing data from {file_path}")
     df = pd.read_csv(file_path)
 
-    # Remove non-ASCII characters only from specified columns
     for column in tqdm(columns_to_normalize, desc="Cleaning data"):
         if column in df.columns:
             df[column] = df[column].apply(remove_non_ascii)
 
-    # Normalize salaries if salary columns are in the list to normalize
     if all(
         col in columns_to_normalize
         for col in ["Salary Range From", "Salary Range To", "Salary Frequency"]
@@ -47,11 +48,12 @@ def load_and_preprocess_data(file_path, columns_to_normalize):
         df["Average Salary"] = (
             df["Normalized Salary From"] + df["Normalized Salary To"]
         ) / 2
+        logger.info("Salary normalization completed")
     else:
-        # If not normalizing, just calculate average from original values
         df["Average Salary"] = (
             df["Salary Range From"].astype(float) + df["Salary Range To"].astype(float)
         ) / 2
+        logger.info("Salary normalization skipped, using original values")
 
     return df
 
@@ -66,14 +68,15 @@ def get_bert_embedding(text, model, tokenizer):
 
 
 def load_model_and_tokenizer():
-    print("Loading pre-trained BERT model and tokenizer...")
+    logger.info("Loading pre-trained BERT model and tokenizer...")
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
     model = BertModel.from_pretrained("bert-base-uncased")
+    logger.info("BERT model and tokenizer loaded successfully")
     return model, tokenizer
 
 
 def process_job_descriptions(df, model, tokenizer, cache_dir, col="Job Description"):
-    print(f"Calculating BERT embeddings for {col}...")
+    logger.info(f"Calculating BERT embeddings for {col}")
     embeddings = []
 
     cache_dir = os.path.join(cache_dir, col)
@@ -94,27 +97,36 @@ def process_job_descriptions(df, model, tokenizer, cache_dir, col="Job Descripti
 
         embeddings.append(embedding)
 
+    logger.info(f"Completed BERT embeddings for {col}")
     return np.array(embeddings)
 
 
+def wrap_text(text, width=50):
+    return "<br>".join(textwrap.wrap(text, width=width))
+
+
 def visualize_umap(embeddings, df, output_path):
-    print("Applying UMAP and creating visualization...")
+    logger.info("Applying UMAP and creating visualization")
     reducer = umap.UMAP(n_neighbors=15, n_components=2, random_state=42, n_jobs=1)
     embedding_2d = reducer.fit_transform(embeddings)
 
     hover_text = df.apply(
         lambda row: (
-            f"Business Title: {row['Business Title']}<br>"
-            f"Civil Service Title: {row['Civil Service Title']}<br>"
-            f"Job Category: {row['Job Category']}<br>"
+            f"Business Title: {wrap_text(row['Business Title'])}<br>"
+            f"Civil Service Title: {wrap_text(row['Civil Service Title'])}<br>"
+            f"Job Category: {wrap_text(row['Job Category'])}<br>"
             f"Salary Range: ${row['Normalized Salary From']:,.2f} - ${row['Normalized Salary To']:,.2f} (Annual)<br>"
-            f"Average Salary: ${row['Average Salary']:,.2f}"
+            f"Average Salary: ${row['Average Salary']:,.2f}<br>"
+            f"{'-' * 50}<br>"
+            f"Preferred Skills:<br>{wrap_text(row['Preferred Skills'])}"
             if "Normalized Salary From" in df.columns
-            else f"Business Title: {row['Business Title']}<br>"
-            f"Civil Service Title: {row['Civil Service Title']}<br>"
-            f"Job Category: {row['Job Category']}<br>"
+            else f"Business Title: {wrap_text(row['Business Title'])}<br>"
+            f"Civil Service Title: {wrap_text(row['Civil Service Title'])}<br>"
+            f"Job Category: {wrap_text(row['Job Category'])}<br>"
             f"Salary Range: ${row['Salary Range From']:,.2f} - ${row['Salary Range To']:,.2f}<br>"
-            f"Average Salary: ${row['Average Salary']:,.2f}"
+            f"Average Salary: ${row['Average Salary']:,.2f}<br>"
+            f"{'-' * 50}<br>"
+            f"Preferred Skills:<br>{wrap_text(row['Preferred Skills'])}"
         ),
         axis=1,
     )
@@ -125,7 +137,7 @@ def visualize_umap(embeddings, df, output_path):
             y=embedding_2d[:, 1],
             mode="markers",
             marker=dict(
-                size=8,
+                size=6,
                 color=df["Average Salary"],
                 colorscale="Viridis",
                 colorbar=dict(title="Average Salary"),
@@ -137,7 +149,7 @@ def visualize_umap(embeddings, df, output_path):
     )
 
     fig.update_layout(
-        title="UMAP Projection of Job Descriptions (BERT Embeddings)",
+        title="UMAP Projection of Jobs by embedding 'Preferred Skills'.",
         xaxis_title="UMAP Dimension 1",
         yaxis_title="UMAP Dimension 2",
         height=800,
@@ -145,7 +157,7 @@ def visualize_umap(embeddings, df, output_path):
     )
 
     fig.write_html(output_path)
-    print(f"Visualization saved as '{output_path}'")
+    logger.info(f"Visualization saved as '{output_path}'")
 
 
 @click.command()
@@ -171,11 +183,13 @@ def visualize_umap(embeddings, df, output_path):
 )
 def main(input_file, output_file, cache_dir, column, normalize):
     """Generate UMAP visualization for job descriptions."""
+    logger.info("Starting job description visualization process")
     columns_to_normalize = normalize.split(",")
     df = load_and_preprocess_data(input_file, columns_to_normalize)
     model, tokenizer = load_model_and_tokenizer()
     embeddings = process_job_descriptions(df, model, tokenizer, cache_dir, col=column)
     visualize_umap(embeddings, df, output_file)
+    logger.info("Job description visualization process completed")
 
 
 if __name__ == "__main__":

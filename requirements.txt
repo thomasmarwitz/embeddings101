@@ -5,3 +5,6 @@ numpy
 umap-learn
 plotly
 click
+tqdm
+pandas
+loguru
