@@ -109,6 +109,8 @@ The script generates an HTML file containing an interactive Plotly visualization
 
 ![Example Output](example.png)
 
+[Interactive Version](https://thomasmarwitz.github.io/embeddings101/)
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
