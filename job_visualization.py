@@ -9,11 +9,50 @@ import click
 import os
 
 
-def load_and_preprocess_data(file_path):
+def remove_non_ascii(text):
+    return "".join([i if ord(i) < 128 else " " for i in str(text)])
+
+
+def normalize_salary(row):
+    if row["Salary Frequency"] == "Annual":
+        return row["Salary Range From"], row["Salary Range To"]
+    elif row["Salary Frequency"] == "Daily":
+        return row["Salary Range From"] * 260, row["Salary Range To"] * 260
+    elif row["Salary Frequency"] == "Hourly":
+        return row["Salary Range From"] * 2080, row["Salary Range To"] * 2080
+    else:
+        return np.nan, np.nan
+
+
+def load_and_preprocess_data(file_path, columns_to_normalize):
     df = pd.read_csv(file_path)
-    df["Average Salary"] = (
-        df["Salary Range From"].astype(float) + df["Salary Range To"].astype(float)
-    ) / 2
+
+    # Remove non-ASCII characters only from specified columns
+    for column in tqdm(columns_to_normalize, desc="Cleaning data"):
+        if column in df.columns:
+            df[column] = df[column].apply(remove_non_ascii)
+
+    # Normalize salaries if salary columns are in the list to normalize
+    if all(
+        col in columns_to_normalize
+        for col in ["Salary Range From", "Salary Range To", "Salary Frequency"]
+    ):
+        df["Salary Range From"] = pd.to_numeric(
+            df["Salary Range From"], errors="coerce"
+        )
+        df["Salary Range To"] = pd.to_numeric(df["Salary Range To"], errors="coerce")
+        df[["Normalized Salary From", "Normalized Salary To"]] = df.apply(
+            normalize_salary, axis=1, result_type="expand"
+        )
+        df["Average Salary"] = (
+            df["Normalized Salary From"] + df["Normalized Salary To"]
+        ) / 2
+    else:
+        # If not normalizing, just calculate average from original values
+        df["Average Salary"] = (
+            df["Salary Range From"].astype(float) + df["Salary Range To"].astype(float)
+        ) / 2
+
     return df
 
 
@@ -33,16 +72,17 @@ def load_model_and_tokenizer():
     return model, tokenizer
 
 
-def process_job_descriptions(df, model, tokenizer, cache_dir):
-    print("Calculating BERT embeddings for job descriptions...")
+def process_job_descriptions(df, model, tokenizer, cache_dir, col="Job Description"):
+    print(f"Calculating BERT embeddings for {col}...")
     embeddings = []
 
+    cache_dir = os.path.join(cache_dir, col)
     os.makedirs(cache_dir, exist_ok=True)
 
     for idx, desc in tqdm(
-        enumerate(df["Job Description"]),
+        enumerate(df[col]),
         total=len(df),
-        desc="Generating 'Job Description' embeddings",
+        desc=f"Generating '{col}' embeddings",
     ):
         cache_file = os.path.join(cache_dir, f"embedding_{idx}.npy")
 
@@ -59,8 +99,25 @@ def process_job_descriptions(df, model, tokenizer, cache_dir):
 
 def visualize_umap(embeddings, df, output_path):
     print("Applying UMAP and creating visualization...")
-    reducer = umap.UMAP(n_neighbors=15, n_components=2, random_state=42)
+    reducer = umap.UMAP(n_neighbors=15, n_components=2, random_state=42, n_jobs=1)
     embedding_2d = reducer.fit_transform(embeddings)
+
+    hover_text = df.apply(
+        lambda row: (
+            f"Business Title: {row['Business Title']}<br>"
+            f"Civil Service Title: {row['Civil Service Title']}<br>"
+            f"Job Category: {row['Job Category']}<br>"
+            f"Salary Range: ${row['Normalized Salary From']:,.2f} - ${row['Normalized Salary To']:,.2f} (Annual)<br>"
+            f"Average Salary: ${row['Average Salary']:,.2f}"
+            if "Normalized Salary From" in df.columns
+            else f"Business Title: {row['Business Title']}<br>"
+            f"Civil Service Title: {row['Civil Service Title']}<br>"
+            f"Job Category: {row['Job Category']}<br>"
+            f"Salary Range: ${row['Salary Range From']:,.2f} - ${row['Salary Range To']:,.2f}<br>"
+            f"Average Salary: ${row['Average Salary']:,.2f}"
+        ),
+        axis=1,
+    )
 
     fig = go.Figure(
         data=go.Scatter(
@@ -74,7 +131,7 @@ def visualize_umap(embeddings, df, output_path):
                 colorbar=dict(title="Average Salary"),
                 showscale=True,
             ),
-            text=df["Business Title"],
+            text=hover_text,
             hoverinfo="text",
         )
     )
@@ -100,11 +157,24 @@ def visualize_umap(embeddings, df, output_path):
     default="embedding_cache",
     help="Directory to store embedding cache",
 )
-def main(input_file, output_file, cache_dir):
+@click.option(
+    "--column",
+    type=str,
+    default="Preferred Skills",
+    help="Column to use for embedding",
+)
+@click.option(
+    "--normalize",
+    type=str,
+    default="Business Title,Civil Service Title,Job Category,Salary Range From,Salary Range To,Salary Frequency,Preferred Skills",
+    help="Comma-separated list of columns to normalize",
+)
+def main(input_file, output_file, cache_dir, column, normalize):
     """Generate UMAP visualization for job descriptions."""
-    df = load_and_preprocess_data(input_file)
+    columns_to_normalize = normalize.split(",")
+    df = load_and_preprocess_data(input_file, columns_to_normalize)
     model, tokenizer = load_model_and_tokenizer()
-    embeddings = process_job_descriptions(df, model, tokenizer, cache_dir)
+    embeddings = process_job_descriptions(df, model, tokenizer, cache_dir, col=column)
     visualize_umap(embeddings, df, output_file)
 
 
