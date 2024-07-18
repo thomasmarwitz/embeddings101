@@ -75,7 +75,7 @@ def load_model_and_tokenizer():
     return model, tokenizer
 
 
-def process_job_descriptions(df, model, tokenizer, cache_dir, col="Job Description"):
+def process_job_descriptions(df, model, tokenizer, cache_dir, col):
     logger.info(f"Calculating BERT embeddings for {col}")
     embeddings = []
 
@@ -105,7 +105,7 @@ def wrap_text(text, width=50):
     return "<br>".join(textwrap.wrap(text, width=width))
 
 
-def visualize_umap(embeddings, df, output_path):
+def visualize_umap(embeddings, df, output_path, embed_column):
     logger.info("Applying UMAP and creating visualization")
     reducer = umap.UMAP(n_neighbors=15, n_components=2, random_state=42, n_jobs=1)
     embedding_2d = reducer.fit_transform(embeddings)
@@ -118,7 +118,7 @@ def visualize_umap(embeddings, df, output_path):
             f"Salary Range: ${row['Normalized Salary From']:,.2f} - ${row['Normalized Salary To']:,.2f} (Annual)<br>"
             f"Average Salary: ${row['Average Salary']:,.2f}<br>"
             f"{'-' * 50}<br>"
-            f"Preferred Skills:<br>{wrap_text(row['Preferred Skills'])}"
+            f"{embed_column}:<br>{wrap_text(row[embed_column])}"
             if "Normalized Salary From" in df.columns
             else f"Business Title: {wrap_text(row['Business Title'])}<br>"
             f"Civil Service Title: {wrap_text(row['Civil Service Title'])}<br>"
@@ -126,7 +126,7 @@ def visualize_umap(embeddings, df, output_path):
             f"Salary Range: ${row['Salary Range From']:,.2f} - ${row['Salary Range To']:,.2f}<br>"
             f"Average Salary: ${row['Average Salary']:,.2f}<br>"
             f"{'-' * 50}<br>"
-            f"Preferred Skills:<br>{wrap_text(row['Preferred Skills'])}"
+            f"{embed_column}:<br>{wrap_text(row[embed_column])}"
         ),
         axis=1,
     )
@@ -149,7 +149,7 @@ def visualize_umap(embeddings, df, output_path):
     )
 
     fig.update_layout(
-        title="UMAP Projection of Jobs by embedding 'Preferred Skills'.",
+        title=f"UMAP Projection of {embed_column} (BERT Embeddings)",
         xaxis_title="UMAP Dimension 1",
         yaxis_title="UMAP Dimension 2",
         height=800,
@@ -170,10 +170,10 @@ def visualize_umap(embeddings, df, output_path):
     help="Directory to store embedding cache",
 )
 @click.option(
-    "--column",
+    "--embed-column",
     type=str,
     default="Preferred Skills",
-    help="Column to use for embedding",
+    help="Column to use for embedding and projection",
 )
 @click.option(
     "--normalize",
@@ -181,14 +181,16 @@ def visualize_umap(embeddings, df, output_path):
     default="Business Title,Civil Service Title,Job Category,Salary Range From,Salary Range To,Salary Frequency,Preferred Skills",
     help="Comma-separated list of columns to normalize",
 )
-def main(input_file, output_file, cache_dir, column, normalize):
+def main(input_file, output_file, cache_dir, embed_column, normalize):
     """Generate UMAP visualization for job descriptions."""
     logger.info("Starting job description visualization process")
     columns_to_normalize = normalize.split(",")
     df = load_and_preprocess_data(input_file, columns_to_normalize)
     model, tokenizer = load_model_and_tokenizer()
-    embeddings = process_job_descriptions(df, model, tokenizer, cache_dir, col=column)
-    visualize_umap(embeddings, df, output_file)
+    embeddings = process_job_descriptions(
+        df, model, tokenizer, cache_dir, col=embed_column
+    )
+    visualize_umap(embeddings, df, output_file, embed_column)
     logger.info("Job description visualization process completed")
 
 

@@ -67,7 +67,7 @@ This command will output the cosine similarity between the two phrases.
 
 The UMAP visualization command requires a file named `nouns.txt` (or another specified input file) in the same directory as the script, with one noun per line.
 
-# Jobs Visualizing
+# Jobs Visualization
 
 # Job Description Visualization Tool
 
@@ -78,8 +78,13 @@ This tool creates a 2D visualization of job descriptions using BERT embeddings a
 
 Run the script from the command line, providing the input CSV file and the desired output HTML file:
 
+```bash
+python job_visualization.py <input_file> <output_file> [OPTIONS]
 ```
-python job_visualization.py Jobs_NYC_Postings.csv index.html
+
+Example:
+```bash
+python job_visualization.py Jobs_NYC_Postings.csv index.html --embed-column "Preferred Skills"
 ```
 
 ### Input CSV Format
@@ -101,6 +106,8 @@ Index(['Job ID', 'Agency', 'Posting Type', '# Of Positions', 'Business Title',
 ### Output
 
 The script generates an HTML file containing an interactive Plotly visualization. Each point in the visualization represents a job listing, with its position determined by the UMAP projection of its BERT embedding. The color of each point represents the average salary for that job.
+
+![Example Output](example.png)
 
 ## License
 
